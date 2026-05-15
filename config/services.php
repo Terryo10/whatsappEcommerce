@@ -35,4 +35,20 @@ return [
         ],
     ],
 
+    'meta' => [
+        'api_version' => env('META_GRAPH_API_VERSION', 'v21.0'),
+        'access_token' => env('META_ACCESS_TOKEN'),
+        'catalog_id' => env('META_CATALOG_ID'),
+        'phone_number_id' => env('META_PHONE_NUMBER_ID'),
+        'verify_token' => env('META_WHATSAPP_VERIFY_TOKEN', 'vegshop_verify_token'),
+        'app_secret' => env('META_APP_SECRET'),
+    ],
+
+    'paynow' => [
+        'integration_id' => env('PAYNOW_INTEGRATION_ID'),
+        'integration_key' => env('PAYNOW_INTEGRATION_KEY'),
+        'result_url' => env('PAYNOW_RESULT_URL'),
+        'return_url' => env('PAYNOW_RETURN_URL'),
+    ],
+
 ];
