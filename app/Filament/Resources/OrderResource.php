@@ -15,7 +15,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Tables\Actions\Action;
+use Filament\Actions\Action as TableAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -91,7 +91,7 @@ class OrderResource extends Resource
             ])
             ->recordActions([
                 ViewAction::make(),
-                Action::make('assign_driver')
+                TableAction::make('assign_driver')
                     ->label('Assign Driver')
                     ->icon('heroicon-o-truck')
                     ->form([

@@ -19,7 +19,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Schema;
-use Filament\Tables\Actions\Action;
+use Filament\Actions\Action as TableAction;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ToggleColumn;
@@ -102,7 +102,11 @@ class ProductResource extends Resource
                     })
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'synced' => 'Synced', 'failed' => 'Failed', 'pending' => 'Pending', default => 'Not Synced',
-                    }),
+                    })
+                    ->description(fn (Product $record): ?string => $record->whatsapp_synced_at
+                        ? 'Last synced ' . $record->whatsapp_synced_at->diffForHumans()
+                        : null
+                    ),
                 ToggleColumn::make('is_active')->label('Active'),
                 ToggleColumn::make('is_whatsapp_visible')->label('On WA'),
             ])
@@ -113,7 +117,7 @@ class ProductResource extends Resource
             ])
             ->recordActions([
                 EditAction::make(),
-                Action::make('sync_whatsapp')
+                TableAction::make('sync_whatsapp')
                     ->label('Sync to WA')
                     ->icon('heroicon-o-arrow-path')
                     ->color('warning')
