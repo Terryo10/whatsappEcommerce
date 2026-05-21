@@ -10,7 +10,7 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Actions\Action;
+use Filament\Actions\Action as TableAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -48,7 +48,7 @@ class CatalogSyncLogResource extends Resource
                 SelectFilter::make('action')->options(['create' => 'Create', 'update' => 'Update', 'delete' => 'Delete', 'bulk_sync' => 'Bulk Sync']),
             ])
             ->recordActions([
-                Action::make('retry')
+                TableAction::make('retry')
                     ->label('Retry')
                     ->icon('heroicon-o-arrow-path')
                     ->color('warning')
