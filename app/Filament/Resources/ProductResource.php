@@ -23,9 +23,11 @@ use Filament\Actions\Action as TableAction;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ToggleColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 
@@ -69,7 +71,12 @@ class ProductResource extends Resource
                     TextInput::make('low_stock_threshold')->numeric()->default(5)->label('Low Stock Alert Threshold'),
                 ]),
                 Grid::make(1)->columnSpan(1)->schema([
-                    FileUpload::make('image_url')->label('Product Image')->image()->directory('products'),
+                    FileUpload::make('image_url')
+                        ->label('Product Image')
+                        ->image()
+                        ->directory('products')
+                        ->required(fn (callable $get): bool => (bool) $get('is_whatsapp_visible'))
+                        ->helperText('Required for WhatsApp sync when "Show on WhatsApp" is enabled.'),
                     Toggle::make('is_active')->label('Active')->default(true),
                     Toggle::make('is_whatsapp_visible')->label('Show on WhatsApp')->default(true),
                     TextInput::make('whatsapp_retailer_id')->label('WhatsApp Retailer ID')->disabled()->placeholder('Auto-set on sync'),
@@ -90,6 +97,11 @@ class ProductResource extends Resource
                 TextColumn::make('name')->searchable()->sortable()->weight('bold'),
                 TextColumn::make('category.name')->label('Category')->badge(),
                 TextColumn::make('price_usd')->label('Price')->money('USD')->sortable(),
+                TextColumn::make('image_status')
+                    ->label('Image')
+                    ->badge()
+                    ->state(fn (Product $record): string => $record->image_url ? 'Ready' : 'Missing')
+                    ->color(fn (Product $record): string => $record->image_url ? 'success' : 'danger'),
                 TextColumn::make('stock_qty')
                     ->label('Stock')
                     ->sortable()
@@ -114,6 +126,9 @@ class ProductResource extends Resource
                 SelectFilter::make('category')->relationship('category', 'name'),
                 SelectFilter::make('whatsapp_sync_status')->options(['synced' => 'Synced', 'failed' => 'Failed', 'pending' => 'Pending', 'not_synced' => 'Not Synced']),
                 TernaryFilter::make('is_active')->label('Active'),
+                Filter::make('missing_image')
+                    ->label('Missing image')
+                    ->query(fn (Builder $query): Builder => $query->whereNull('image_url')),
             ])
             ->recordActions([
                 EditAction::make(),
@@ -122,6 +137,16 @@ class ProductResource extends Resource
                     ->icon('heroicon-o-arrow-path')
                     ->color('warning')
                     ->action(function (Product $record): void {
+                        if (blank($record->image_url)) {
+                            Notification::make()
+                                ->title('Cannot sync without product image')
+                                ->body('Upload an image in Edit Product, then retry sync.')
+                                ->warning()
+                                ->send();
+
+                            return;
+                        }
+
                         try {
                             app(CatalogSyncService::class)->syncProduct($record);
                             Notification::make()->title('Product synced to WhatsApp!')->success()->send();
@@ -139,10 +164,20 @@ class ProductResource extends Resource
                         ->action(function (Collection $records): void {
                             $service = app(CatalogSyncService::class);
                             $success = 0;
+                            $skipped = 0;
                             foreach ($records as $product) {
+                                if (blank($product->image_url)) {
+                                    $skipped++;
+                                    continue;
+                                }
+
                                 try { $service->syncProduct($product); $success++; } catch (\Throwable) {}
                             }
-                            Notification::make()->title("Synced {$success}/{$records->count()} products")->success()->send();
+                            Notification::make()
+                                ->title("Synced {$success}/{$records->count()} products")
+                                ->body($skipped > 0 ? "{$skipped} skipped because image is missing." : null)
+                                ->success()
+                                ->send();
                         }),
                 ]),
             ]);

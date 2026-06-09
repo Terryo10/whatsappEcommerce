@@ -22,7 +22,12 @@ class ProductObserver
             return;
         }
 
-        $product->update(['whatsapp_sync_status' => 'pending']);
+        if ($product->whatsapp_sync_status !== 'pending') {
+            $product->forceFill([
+                'whatsapp_sync_status' => 'pending',
+                'whatsapp_sync_error' => null,
+            ])->saveQuietly();
+        }
 
         try {
             app(CatalogSyncService::class)->syncProduct($product);

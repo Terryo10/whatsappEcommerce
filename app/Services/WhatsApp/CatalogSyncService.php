@@ -13,13 +13,15 @@ class CatalogSyncService
     private string $catalogId;
     private string $apiVersion;
     private string $baseUrl;
+    private string $publicBaseUrl;
 
     public function __construct()
     {
-        $this->accessToken = config('services.meta.access_token', '');
-        $this->catalogId = config('services.meta.catalog_id', '');
-        $this->apiVersion = config('services.meta.api_version', 'v21.0');
+        $this->accessToken = (string) config('services.meta.access_token', '');
+        $this->catalogId = (string) config('services.meta.catalog_id', '');
+        $this->apiVersion = (string) config('services.meta.api_version', 'v21.0');
         $this->baseUrl = "https://graph.facebook.com/{$this->apiVersion}";
+        $this->publicBaseUrl = rtrim((string) config('app.url', ''), '/');
     }
 
     public function syncProduct(Product $product): void
@@ -43,29 +45,35 @@ class CatalogSyncService
             $response = Http::withToken($this->accessToken)
                 ->post("{$this->baseUrl}/{$this->catalogId}/products", $payload);
 
+            $responseData = $response->json();
+
             if ($response->successful()) {
-                $responseData = $response->json();
                 $retailerId = $responseData['id'] ?? $product->whatsapp_retailer_id ?? $payload['retailer_id'];
 
-                $product->update([
+                $product->forceFill([
                     'whatsapp_retailer_id' => $retailerId,
                     'whatsapp_sync_status' => 'synced',
                     'whatsapp_synced_at' => now(),
                     'whatsapp_sync_error' => null,
-                ]);
+                ])->saveQuietly();
 
                 $log->update(['status' => 'success', 'response_payload' => $responseData]);
             } else {
-                $error = $response->json('error.message', 'Unknown error');
+                $error = $responseData['error']['message'] ?? 'Unknown error';
+
+                $log->update([
+                    'response_payload' => $responseData,
+                ]);
+
                 throw new \RuntimeException($error);
             }
         } catch (\Throwable $e) {
             Log::error('WhatsApp catalog sync failed', ['product_id' => $product->id, 'error' => $e->getMessage()]);
 
-            $product->update([
+            $product->forceFill([
                 'whatsapp_sync_status' => 'failed',
                 'whatsapp_sync_error' => $e->getMessage(),
-            ]);
+            ])->saveQuietly();
 
             $log->update([
                 'status' => 'failed',
@@ -113,7 +121,10 @@ class CatalogSyncService
 
     public function bulkSync(): void
     {
-        $products = Product::where('is_active', true)->where('is_whatsapp_visible', true)->get();
+        $products = Product::query()
+            ->where('is_active', true)
+            ->where('is_whatsapp_visible', true)
+            ->get();
 
         CatalogSyncLog::create([
             'product_name' => "Bulk sync ({$products->count()} products)",
@@ -161,9 +172,31 @@ class CatalogSyncService
             'currency' => 'USD',
             'availability' => ($product->is_active && $product->stock_qty > 0) ? 'in stock' : 'out of stock',
             'condition' => 'new',
-            'image_url' => $product->image_url ? url('storage/' . $product->image_url) : null,
-            'url' => url('/products/' . $product->slug),
+            'image_url' => $this->resolveImageUrl($product),
+            'url' => $this->absoluteUrl('/products/' . $product->slug),
             'category' => $product->category?->name ?? 'Groceries',
         ];
+    }
+
+    private function resolveImageUrl(Product $product): string
+    {
+        if ($product->image_url) {
+            if (str_starts_with($product->image_url, 'http://') || str_starts_with($product->image_url, 'https://')) {
+                return $product->image_url;
+            }
+
+            return $this->absoluteUrl('/storage/' . ltrim($product->image_url, '/'));
+        }
+
+        throw new \RuntimeException('Product image is required for WhatsApp catalog sync. Upload an image and retry.');
+    }
+
+    private function absoluteUrl(string $path): string
+    {
+        if ($this->publicBaseUrl === '') {
+            return url($path);
+        }
+
+        return $this->publicBaseUrl . '/' . ltrim($path, '/');
     }
 }
